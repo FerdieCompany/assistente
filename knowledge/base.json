@@ -1,0 +1,40 @@
+{
+  "sobre_contato": {
+    "resumo": "Quem somos e como falar com a equipe.",
+    "links": [
+      "https://www.ferdie.store/aferdie",
+      "https://www.ferdie.store/contatoferdie"
+    ]
+  },
+  "tabela_aros_abnt": {
+    "resumo": "Guia visual com medidas ABNT e diâmetro interno.",
+    "links": [
+      "https://www.ferdie.store/tabeladearosabntvisual"
+    ]
+  },
+  "envio_devolucoes": {
+    "resumo": "Prazos de envio, trocas e devoluções.",
+    "links": [
+      "https://www.ferdie.store/envio-e-devolu%C3%A7%C3%B5es"
+    ]
+  },
+  "colecoes": {
+    "resumo": "Coleções principais e suas propostas.",
+    "links": [
+      "https://www.ferdie.store/colecaoauroraboreal"
+    ]
+  },
+  "materiais_cuidados": {
+    "resumo": "Materiais e cuidados básicos com joias Ferdie.",
+    "links": [
+      "https://www.ferdie.store/turmalinaparaiba"
+    ]
+  },
+  "presentes_giftcard": {
+    "resumo": "Gift Card e seleção de presentes.",
+    "links": [
+      "https://www.ferdie.store/gift-card",
+      "https://www.ferdie.store/presentesferdie"
+    ]
+  }
+}
