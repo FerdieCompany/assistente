@@ -1,124 +1,65 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import OpenAI from 'openai';
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const cors = require('cors');
+const { Configuration, OpenAIApi } = require('openai');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+require('dotenv').config();
 
-// -------------------- Config --------------------
-const PORT = process.env.PORT || 8080;
-const MODEL = process.env.MODEL || 'gpt-4o';
-const PROMPT_PATH = process.env.PROMPT_PATH
-  ? path.resolve(process.env.PROMPT_PATH)
-  : path.join(__dirname, 'prompts', 'system_ptbr.txt');
-
-const KNOWLEDGE_PATH = path.join(__dirname, 'knowledge', 'base.json');
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// -------------------- Leitura de arquivos --------------------
-let SYSTEM_PROMPT = '';
-function loadPrompt() {
-  try {
-    SYSTEM_PROMPT = fs.readFileSync(PROMPT_PATH, 'utf-8');
-    console.log('[prompt] carregado de', PROMPT_PATH);
-  } catch (e) {
-    console.warn('[prompt] não foi possível ler', PROMPT_PATH, '->', e.message);
-    SYSTEM_PROMPT = 'Você é o Assistente Ferdie. Responda com educação, brevidade e sem vender.';
-  }
-}
-loadPrompt();
-
-// recarrega automaticamente quando o arquivo do prompt mudar
-fs.watchFile(PROMPT_PATH, { interval: 1000 }, () => {
-  try {
-    loadPrompt();
-    console.log('[prompt] recarregado');
-  } catch {}
-});
-
-let knowledgeBase = {};
-function loadKnowledge() {
-  try {
-    const raw = fs.readFileSync(KNOWLEDGE_PATH, 'utf-8');
-    knowledgeBase = JSON.parse(raw);
-    console.log('[knowledge] carregado de', KNOWLEDGE_PATH);
-  } catch (e) {
-    console.error('[knowledge] erro ao ler JSON:', e.message);
-    knowledgeBase = {};
-  }
-}
-loadKnowledge();
-
-// recarrega automaticamente quando a base mudar
-fs.watchFile(KNOWLEDGE_PATH, { interval: 1000 }, () => {
-  try {
-    loadKnowledge();
-    console.log('[knowledge] recarregado');
-  } catch {}
-});
-
-// -------------------- App --------------------
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json());
 
-// Healthcheck
-app.get('/health', (_req, res) => res.json({ ok: true }));
+// 🔹 BLOCO DE CORS ESTENDIDO
+app.use(cors({
+  origin: '*', // pode trocar por "https://www.ferdie.store" se quiser restringir só ao Wix
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
 
-// Endpoint principal do assistente
+// Carregar prompt
+const promptPath = process.env.PROMPT_PATH || './prompts/system_ptbr.txt';
+const systemPrompt = fs.readFileSync(promptPath, 'utf8');
+console.log(`[prompt] carregado de ${path.resolve(promptPath)}`);
+
+// Carregar knowledge base
+const knowledgePath = './knowledge/base.json';
+const knowledgeBase = fs.existsSync(knowledgePath)
+  ? JSON.parse(fs.readFileSync(knowledgePath, 'utf8'))
+  : {};
+console.log(`[knowledge] carregado de ${path.resolve(knowledgePath)}`);
+
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
+
 app.post('/assistente', async (req, res) => {
   try {
-    const userMessage = String(req.body?.message ?? '').slice(0, 4000);
-    if (!userMessage) {
-      return res.status(400).json({ error: 'Mensagem vazia.' });
-    }
-
-    // Mensagens para o modelo — 100% contidas e curadas
-    const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'system',
-        content:
-          'knowledge_base (JSON a seguir). Use somente estes conteúdos e links:\n' +
-          JSON.stringify(knowledgeBase, null, 2)
-      },
-      { role: 'user', content: userMessage }
-    ];
+    const userMessage = req.body.message || "";
 
     const completion = await openai.chat.completions.create({
-      model: MODEL,
-      messages,
-      temperature: 0.4,
-      max_tokens: 450
+      model: process.env.MODEL || "gpt-4o",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage }
+      ],
     });
 
-    const reply =
-      completion.choices?.[0]?.message?.content?.trim() ||
-      '...';
-
     res.json({
-      reply,
+      reply: completion.choices[0].message.content,
       meta: {
-        model: MODEL,
-        policy: 'apontar_nao_convencer',
+        model: process.env.MODEL || "gpt-4o",
+        policy: "apontar_nao_convencer",
         sources_allowed: Object.keys(knowledgeBase)
       }
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      error: 'Falha ao gerar resposta.',
-      detail: String(err?.message || err)
-    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: String(error) });
   }
 });
 
-// -------------------- Start --------------------
-app.listen(PORT, () => {
-  console.log(`Assistente Ferdie rodando em http://localhost:${PORT}`);
+const port = process.env.PORT || 8080;
+app.listen(port, () => {
+  console.log(`Assistente Ferdie rodando em http://localhost:${port}`);
 });
