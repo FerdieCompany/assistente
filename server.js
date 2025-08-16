@@ -2,7 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai'); // <-- correto
 
 require('dotenv').config();
 
@@ -11,7 +11,7 @@ app.use(express.json());
 
 // 🔹 BLOCO DE CORS ESTENDIDO
 app.use(cors({
-  origin: '*', // pode trocar por "https://www.ferdie.store" se quiser restringir só ao Wix
+  origin: '*', // pode trocar por "https://www.ferdie.store"
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
 }));
@@ -28,10 +28,10 @@ const knowledgeBase = fs.existsSync(knowledgePath)
   : {};
 console.log(`[knowledge] carregado de ${path.resolve(knowledgePath)}`);
 
-const configuration = new Configuration({
+// ✅ Instanciar corretamente o cliente
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
 app.post('/assistente', async (req, res) => {
   try {
