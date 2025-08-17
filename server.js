@@ -1,76 +1,98 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const cors = require('cors');
-const OpenAI = require('openai');
-
-require('dotenv').config();
+import express from "express";
+import bodyParser from "body-parser";
+import OpenAI from "openai";
+import fs from "fs";
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.json());
 
-// 🔹 Configuração de CORS
-app.use(cors({
-  origin: '*', // pode trocar para "https://www.ferdie.store"
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
-}));
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Carregar prompt do sistema
-const promptPath = process.env.PROMPT_PATH || './prompts/system_ptbr.txt';
-const systemPrompt = fs.readFileSync(promptPath, 'utf8');
-console.log(`[prompt] carregado de ${path.resolve(promptPath)}`);
+// Carrega prompt base e conhecimento (conteúdo real do site já consolidado no JSON)
+const systemPrompt = fs.readFileSync("./prompts/system_ptbr.txt", "utf8");
+// knowledgeText é o texto consolidado do seu conteudo_ferdie.json (já gerado por você)
+const knowledgeText = fs.readFileSync("./data/conteudo_ferdie.json", "utf8");
 
-// Carregar knowledge base do site (conteúdo do JSON)
-const knowledgePath = './knowledge/conteudo_ferdie.json';
-const knowledgeBase = fs.existsSync(knowledgePath)
-  ? JSON.parse(fs.readFileSync(knowledgePath, 'utf8'))
-  : {};
-console.log(`[knowledge] carregado de ${path.resolve(knowledgePath)}`);
+// Pequenas pistas de estilo (sorteadas a cada requisição para não soar igual)
+const styles = [
+  "Escreva como um bilhete carinhoso.",
+  "Use um sopro de poesia, sem exagero.",
+  "Voz serena, poucas palavras e imagens de luz.",
+  "Tons de carta íntima, discreta e honesta.",
+  "Respire calma; diga menos, com precisão.",
+  "Fale como quem serve um chá e escuta."
+];
 
-// ✅ Instanciar OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Captura um “afinador de tom” da primeira mensagem do cliente (opcional, mas poderoso)
+function buildToneCalibrator(firstMessage) {
+  if (!firstMessage) return "";
+  // Extrai sinais de emoção ou contexto para orientar o tom
+  return `\n\nAFINADOR DE TOM (derivado da 1ª mensagem do cliente):\n` +
+         `- Use um tom que combine com: "${firstMessage.slice(0, 240)}"\n` +
+         `- Espelhe o ritmo e as palavras-chave do cliente.\n` +
+         `- Se houver emoção explícita (alegria, ansiedade, pressa), reconheça-a brevemente.\n`;
+}
 
-app.post('/assistente', async (req, res) => {
+app.post("/assistente", async (req, res) => {
   try {
-    const userMessage = req.body.message || "";
+    const { message: userMessage, history = [] } = req.body || {};
 
-    // Transformar knowledgeBase em um bloco de contexto
-    const knowledgeText = Object.entries(knowledgeBase)
-      .map(([url, content]) => `📄 Página: ${url}\n${content}`)
-      .join("\n\n");
+    // Pega a 1ª fala real do cliente para afinar o tom (use seu histórico, se tiver)
+    const firstUserMessage =
+      history.find((m) => m.role === "user")?.content || userMessage || "";
+
+    const styleHint = styles[Math.floor(Math.random() * styles.length)];
+    const toneCalibrator = buildToneCalibrator(firstUserMessage);
+
+    // Monta mensagens preservando sua base textual real (JSON) e sem “roteiro”
+    const messages = [
+      {
+        role: "system",
+        content:
+          systemPrompt +
+          `\n\nHINT DE ESTILO: ${styleHint}` +
+          toneCalibrator +
+          `\n\nCONHECIMENTO (JSON Ferdie):\n` +
+          knowledgeText
+      },
+      // Histórico curto (opcional): ajuda a manter contexto sem engessar
+      ...history.slice(-6), // mantém a conversa enxuta e viva
+      { role: "user", content: userMessage }
+    ];
 
     const completion = await openai.chat.completions.create({
       model: process.env.MODEL || "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `${systemPrompt}\n\nAqui estão os textos do site Ferdie que você deve usar para responder:\n${knowledgeText}`
-        },
-        { role: "user", content: userMessage }
-      ],
-      temperature: 0.7
+      messages,
+      temperature: 0.9,        // mais liberdade
+      top_p: 0.9,
+      presence_penalty: 0.6,   // incentiva variar temas/aberturas
+      frequency_penalty: 0.5,  // evita repetir frases
+      max_tokens: 300
     });
 
-    const reply = completion.choices[0].message.content;
+    // Sanitiza a saída: remove marcas acidentais, markdown e qualquer link
+    let text = completion.choices?.[0]?.message?.content?.trim() || "";
+    text = text
+      .replace(/\*\*|__|`/g, "")     // formatação
+      .replace(/\[(.*?)\]\((.*?)\)/g, "$1") // links markdown -> texto puro
+      .replace(/https?:\/\/\S+/g, "");      // URLs cruas
 
-    res.json({
-      reply,
-      meta: {
-        model: process.env.MODEL || "gpt-4o",
-        policy: "usar_conteudo_site",
-        sources_total: Object.keys(knowledgeBase).length
-      }
+    // Garante formato curto (2–4 frases) sem quebrar o clima
+    const sentences = text.split(/(?<=[.!?…])\s+/).filter(Boolean);
+    if (sentences.length > 4) {
+      text = sentences.slice(0, 4).join(" ");
+    }
+
+    return res.json({ reply: text });
+  } catch (err) {
+    console.error("Erro Assistente Ferdie:", err);
+    return res.status(500).json({
+      reply:
+        "Deu um pequeno nó aqui do meu lado. Posso tentar de novo com calma?"
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: String(error) });
   }
 });
 
-const port = process.env.PORT || 8080;
-app.listen(port, () => {
-  console.log(`Assistente Ferdie rodando em http://localhost:${port}`);
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Assistente Ferdie online");
 });
