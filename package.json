@@ -1,7 +1,7 @@
 {
   "name": "assistente-ferdie-backend",
   "version": "1.0.0",
-  "type": "module",              // <<< aqui adiciona
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
