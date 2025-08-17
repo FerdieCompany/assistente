@@ -2,8 +2,12 @@ import express from "express";
 import bodyParser from "body-parser";
 import OpenAI from "openai";
 import fs from "fs";
+import cors from "cors";   // <<< importa cors
 
 const app = express();
+
+// habilita CORS para todas as origens
+app.use(cors());           // <<< ativa cors
 app.use(bodyParser.json());
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -26,7 +30,6 @@ const styles = [
 // Captura um “afinador de tom” da primeira mensagem do cliente (opcional, mas poderoso)
 function buildToneCalibrator(firstMessage) {
   if (!firstMessage) return "";
-  // Extrai sinais de emoção ou contexto para orientar o tom
   return `\n\nAFINADOR DE TOM (derivado da 1ª mensagem do cliente):\n` +
          `- Use um tom que combine com: "${firstMessage.slice(0, 240)}"\n` +
          `- Espelhe o ritmo e as palavras-chave do cliente.\n` +
@@ -37,14 +40,12 @@ app.post("/assistente", async (req, res) => {
   try {
     const { message: userMessage, history = [] } = req.body || {};
 
-    // Pega a 1ª fala real do cliente para afinar o tom (use seu histórico, se tiver)
     const firstUserMessage =
       history.find((m) => m.role === "user")?.content || userMessage || "";
 
     const styleHint = styles[Math.floor(Math.random() * styles.length)];
     const toneCalibrator = buildToneCalibrator(firstUserMessage);
 
-    // Monta mensagens preservando sua base textual real (JSON) e sem “roteiro”
     const messages = [
       {
         role: "system",
@@ -55,29 +56,26 @@ app.post("/assistente", async (req, res) => {
           `\n\nCONHECIMENTO (JSON Ferdie):\n` +
           knowledgeText
       },
-      // Histórico curto (opcional): ajuda a manter contexto sem engessar
-      ...history.slice(-6), // mantém a conversa enxuta e viva
+      ...history.slice(-6),
       { role: "user", content: userMessage }
     ];
 
     const completion = await openai.chat.completions.create({
       model: process.env.MODEL || "gpt-4o",
       messages,
-      temperature: 0.9,        // mais liberdade
+      temperature: 0.9,
       top_p: 0.9,
-      presence_penalty: 0.6,   // incentiva variar temas/aberturas
-      frequency_penalty: 0.5,  // evita repetir frases
+      presence_penalty: 0.6,
+      frequency_penalty: 0.5,
       max_tokens: 300
     });
 
-    // Sanitiza a saída: remove marcas acidentais, markdown e qualquer link
     let text = completion.choices?.[0]?.message?.content?.trim() || "";
     text = text
-      .replace(/\*\*|__|`/g, "")     // formatação
-      .replace(/\[(.*?)\]\((.*?)\)/g, "$1") // links markdown -> texto puro
-      .replace(/https?:\/\/\S+/g, "");      // URLs cruas
+      .replace(/\*\*|__|`/g, "")
+      .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+      .replace(/https?:\/\/\S+/g, "");
 
-    // Garante formato curto (2–4 frases) sem quebrar o clima
     const sentences = text.split(/(?<=[.!?…])\s+/).filter(Boolean);
     if (sentences.length > 4) {
       text = sentences.slice(0, 4).join(" ");
@@ -87,8 +85,7 @@ app.post("/assistente", async (req, res) => {
   } catch (err) {
     console.error("Erro Assistente Ferdie:", err);
     return res.status(500).json({
-      reply:
-        "Deu um pequeno nó aqui do meu lado. Posso tentar de novo com calma?"
+      reply: "Deu um pequeno nó aqui do meu lado. Posso tentar de novo com calma?"
     });
   }
 });
