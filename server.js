@@ -96,6 +96,15 @@ function ranquearProdutosPorQuery(query, max = 24) {
 }
 
 // ===============================
+// Lista de termos que indicam pedido de joia
+// ===============================
+const termosProduto = [
+  "anel", "col", "brinc", "pingent", "alian",
+  "ouro", "prata", "joia", "jóia", "presente",
+  "safira", "turmalina", "rubi", "diamante", "gema"
+];
+
+// ===============================
 // Endpoints de teste
 // ===============================
 app.get("/produtos", (req, res) => {
@@ -155,11 +164,17 @@ app.post("/assistente", async (req, res) => {
 
     let text = completion.choices?.[0]?.message?.content?.trim() || "";
 
-    // pega o produto mais relevante da lista para expor imagem direto
-    const escolhido = produtosRelevantes[0] || {};
+    // decide se deve mandar imagem
+    let image = null;
+    const msgSanitized = sanitize(userMessage);
+    const pedeProduto = termosProduto.some(t => msgSanitized.includes(t));
+    if (pedeProduto && produtosRelevantes.length > 0) {
+      image = produtosRelevantes[0].imagem || null;
+    }
+
     return res.json({
       reply: text,
-      image: escolhido.imagem || null
+      image
     });
   } catch (err) {
     console.error("Erro Assistente Ferdie:", err);
