@@ -72,8 +72,10 @@ app.post("/assistente", async (req, res) => {
       .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
       .replace(/https?:\/\/\S+/g, "");
 
-    // <<< Remove só o rabicho final indesejado
+    // <<< Remove cutucadas finais indesejadas (qualquer pergunta no fim)
     text = text.replace(/\s*(Pode me contar.*)$/i, "").trim();
+    text = text.replace(/\s*(Gostaria de saber.*)$/i, "").trim();
+    text = text.replace(/\s*(Posso ajudar.*)$/i, "").trim();
 
     const sentences = text.split(/(?<=[.!?…])\s+/).filter(Boolean);
     if (sentences.length > 4) {
