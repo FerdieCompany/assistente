@@ -96,15 +96,6 @@ function ranquearProdutosPorQuery(query, max = 24) {
 }
 
 // ===============================
-// Lista de termos que indicam pedido de joia
-// ===============================
-const termosProduto = [
-  "anel", "col", "brinc", "pingent", "alian",
-  "ouro", "prata", "joia", "jóia", "presente",
-  "safira", "turmalina", "rubi", "diamante", "gema"
-];
-
-// ===============================
 // Endpoints de teste
 // ===============================
 app.get("/produtos", (req, res) => {
@@ -125,8 +116,6 @@ app.get("/produtos/buscar", (req, res) => {
 app.post("/assistente", async (req, res) => {
   try {
     const { message: userMessage, history = [] } = req.body || {};
-    const firstUserMessage =
-      history.find((m) => m.role === "user")?.content || userMessage || "";
 
     const produtosRelevantes = ranquearProdutosPorQuery(userMessage, 12);
 
@@ -149,7 +138,8 @@ app.post("/assistente", async (req, res) => {
           listaProdutos +
           `\n\nREGRAS PARA PRODUTOS:\n` +
           `- Só sugira itens que estejam nesta lista.\n` +
-          `- Use imagem exatamente como está no catálogo, sem inventar.\n`,
+          `- Sempre cite o nome exato da joia.\n` +
+          `- Use a imagem exatamente como está no catálogo, sem inventar.\n`,
       },
       ...history.slice(-6),
       { role: "user", content: userMessage },
@@ -164,17 +154,21 @@ app.post("/assistente", async (req, res) => {
 
     let text = completion.choices?.[0]?.message?.content?.trim() || "";
 
-    // decide se deve mandar imagem
-    let image = null;
-    const msgSanitized = sanitize(userMessage);
-    const pedeProduto = termosProduto.some(t => msgSanitized.includes(t));
-    if (pedeProduto && produtosRelevantes.length > 0) {
-      image = produtosRelevantes[0].imagem || null;
+    // ====================================
+    // NOVA LÓGICA: busca a joia citada
+    // ====================================
+    let escolhido = null;
+    for (const p of produtosRelevantes) {
+      if (text.toLowerCase().includes(p.titulo.toLowerCase())) {
+        escolhido = p;
+        break;
+      }
     }
+    if (!escolhido) escolhido = produtosRelevantes[0] || {};
 
     return res.json({
       reply: text,
-      image
+      image: escolhido.imagem || null,
     });
   } catch (err) {
     console.error("Erro Assistente Ferdie:", err);
