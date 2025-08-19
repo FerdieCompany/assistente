@@ -155,7 +155,7 @@ app.post("/assistente", async (req, res) => {
     let text = completion.choices?.[0]?.message?.content?.trim() || "";
 
     // ====================================
-    // NOVA LÓGICA: busca a joia citada
+    // NOVA LÓGICA: só envia imagem se citar produto
     // ====================================
     let escolhido = null;
     for (const p of produtosRelevantes) {
@@ -164,11 +164,10 @@ app.post("/assistente", async (req, res) => {
         break;
       }
     }
-    if (!escolhido) escolhido = produtosRelevantes[0] || {};
 
     return res.json({
       reply: text,
-      image: escolhido.imagem || null,
+      image: escolhido ? escolhido.imagem : null, // só quando houver match
     });
   } catch (err) {
     console.error("Erro Assistente Ferdie:", err);
