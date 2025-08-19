@@ -117,8 +117,37 @@ app.post("/assistente", async (req, res) => {
   try {
     const { message: userMessage, history = [] } = req.body || {};
 
+    // Recupera último produto salvo no histórico (se houver)
+    let ultimoProduto = null;
+    if (history.length) {
+      const ultima = history[history.length - 1];
+      if (ultima.produtoId) {
+        ultimoProduto = produtos.find(p => p.id === ultima.produtoId) || null;
+      }
+    }
+
+    // Busca candidatos pelo texto
     const produtosRelevantes = ranquearProdutosPorQuery(userMessage, 12);
 
+    // Detecta se pergunta é genérica (sem nome, tipo “esse anel”, “qual o valor”)
+    const perguntaGenerica = /(preço|valor|quanto|esse|essa|quanto custa)/i.test(userMessage);
+
+    // Regra: se for genérica → responde sobre o último produto
+    let escolhido = null;
+    if (perguntaGenerica && ultimoProduto) {
+      escolhido = ultimoProduto;
+    } else {
+      // Senão, tenta achar pelo match no texto
+      for (const p of produtosRelevantes) {
+        if (userMessage.toLowerCase().includes(p.titulo.toLowerCase())) {
+          escolhido = p;
+          break;
+        }
+      }
+      if (!escolhido) escolhido = produtosRelevantes[0] || null;
+    }
+
+    // Monta contexto para o modelo
     const listaProdutos = produtosRelevantes
       .map((p) => {
         const partes = [`- ${p.titulo}`];
@@ -134,12 +163,12 @@ app.post("/assistente", async (req, res) => {
           systemPrompt +
           `\n\nCONHECIMENTO (texto fixo):\n` +
           knowledgeText +
-          `\n\nCATÁLOGO FERDIE (produtos disponíveis no site, use estes ao sugerir joias):\n` +
+          `\n\nCATÁLOGO FERDIE:\n` +
           listaProdutos +
-          `\n\nREGRAS PARA PRODUTOS:\n` +
-          `- Só sugira itens que estejam nesta lista.\n` +
-          `- Sempre cite o nome exato da joia.\n` +
-          `- Use a imagem exatamente como está no catálogo, sem inventar.\n`,
+          `\n\nREGRAS:\n` +
+          `- Só sugira itens da lista.\n` +
+          `- Sempre cite o nome exato.\n` +
+          `- Se usuário perguntar preço/valor de "esse", responda sobre o último produto escolhido.\n`,
       },
       ...history.slice(-6),
       { role: "user", content: userMessage },
@@ -154,21 +183,18 @@ app.post("/assistente", async (req, res) => {
 
     let text = completion.choices?.[0]?.message?.content?.trim() || "";
 
-    // ====================================
-    // NOVA LÓGICA: só envia imagem se citar produto
-    // ====================================
-    let escolhido = null;
-    for (const p of produtosRelevantes) {
-      if (text.toLowerCase().includes(p.titulo.toLowerCase())) {
-        escolhido = p;
-        break;
-      }
+    // ✅ Força preço real do catálogo quando for pergunta genérica
+    if (perguntaGenerica && escolhido) {
+      text = `O último produto sugerido foi o **${escolhido.titulo}**, e seu preço é de R$ ${escolhido.preco}. Uma expressão de beleza única.`;
     }
 
+    // Responde e devolve id do produto para salvar no histórico do frontend
     return res.json({
       reply: text,
-      image: escolhido ? escolhido.imagem : null, // só quando houver match
+      image: escolhido?.imagem || null,
+      produtoId: escolhido?.id || null,
     });
+
   } catch (err) {
     console.error("Erro Assistente Ferdie:", err);
     return res.status(500).json({
